@@ -35,6 +35,7 @@ app = Flask(
     template_folder=os.path.join(__basedir__, "templates")
     )
 app.config.update(
+    acidfs_factory=None,
     directory_base=compat.getcwd(),
     directory_start=None,
     directory_remove=None,
@@ -249,8 +250,25 @@ def remove(path):
     if request.method == 'GET':
         return render_template('remove.html', file=file)
 
-    file.remove()
+    acidfs = get_acidfs()
+    if acidfs:
+        if not file.path.startswith(acidfs.wd):
+            return NotFound()
+        path = file.path[len(acidfs.wd):]
+        if file.is_directory:
+            acidfs.rmtree(path)
+        else:
+            acidfs.rm(path)
+    else:
+        file.remove()
+
     return redirect(url_for(".browse", path=file.parent.urlpath))
+
+
+def get_acidfs():
+    factory = app.config.get('acidfs_factory', None)
+    if factory:
+        return factory()
 
 
 @app.route("/upload", defaults={'path': ''}, methods=("POST",))
@@ -268,13 +286,19 @@ def upload(path):
       ):
         return NotFound()
 
+    acidfs = get_acidfs()
     for v in request.files.listvalues():
         for f in v:
             filename = secure_filename(f.filename)
             if filename:
-                filename = directory.choose_filename(filename)
                 filepath = os.path.join(directory.path, filename)
-                f.save(filepath)
+                if acidfs:
+                    if not filepath.startswith(acidfs.wd):
+                        return NotFound()
+                    filepath = filepath[len(acidfs.wd):]
+                    f.save(acidfs.open(filepath, 'wb'))
+                else:
+                    f.save(filepath)
             else:
                 raise InvalidFilenameError(
                     path=directory.path,

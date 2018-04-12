@@ -12,6 +12,7 @@ env3/*
 wenv2/*
 wenv3/*
 node_modules/*
+.*.swp
 .eggs/*
 browsepy.build/*
 browsepy.egg-info/*
