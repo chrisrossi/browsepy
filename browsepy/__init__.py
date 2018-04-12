@@ -307,6 +307,76 @@ def upload(path):
     return redirect(url_for(".browse", path=directory.urlpath))
 
 
+@app.route("/new_folder", defaults={'path': ''},
+                   methods=("POST", "GET"))
+@app.route("/new_folder/<path:path>", methods=("POST", "GET"))
+def new_folder(path):
+    try:
+        directory = Node.from_urlpath(path)
+    except OutsideDirectoryBase:
+        return NotFound()
+
+    if (
+      not directory.is_directory or
+      not directory.can_upload or
+      not directory.can_remove or
+      directory.is_excluded
+      ):
+        return NotFound()
+
+    if request.method == 'GET':
+        return render_template('new_folder.html')
+
+    acidfs = get_acidfs()
+    path = directory.path
+    if not path.startswith(acidfs.wd):
+        return NotFound()
+    path = path[len(acidfs.wd):]
+    name = secure_filename(request.form['name'])
+    if name:
+        with acidfs.cd(path):
+            acidfs.mkdir(name)
+            with acidfs.cd(name):
+                acidfs.open('.folder', 'w').write('')
+    else:
+        raise InvalidFilenameError(
+            path=path,
+            filename=request.form['name'],
+            )
+
+    return redirect(url_for(".browse", path=directory.urlpath))
+
+
+@app.route("/rename", defaults={'path': ''}, methods=("POST", "GET"))
+@app.route("/rename/<path:path>", methods=("POST", "GET"))
+def rename(path):
+    try:
+        file = Node.from_urlpath(path)
+    except OutsideDirectoryBase:
+        return NotFound()
+
+    folder = file.parent
+    if request.method == 'GET':
+        return render_template('rename.html', file=file)
+
+    acidfs = get_acidfs()
+    if not folder.path.startswith(acidfs.wd):
+        return NotFound()
+
+    path = folder.path[len(acidfs.wd):]
+    name = secure_filename(request.form['name'])
+    if name:
+        with acidfs.cd(path):
+            acidfs.mv(file.name, name)
+    else:
+        raise InvalidFilenameError(
+            path=path,
+            filename=request.form['name'],
+            )
+
+    return redirect(url_for(".browse", path=file.parent.urlpath))
+
+
 @app.route("/")
 def index():
     path = app.config["directory_start"] or app.config["directory_base"]
